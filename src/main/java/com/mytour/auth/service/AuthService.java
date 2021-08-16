@@ -1,7 +1,6 @@
 package com.mytour.auth.service;
 
 import com.mytour.auth.config.security.jwt.JwtUtils;
-import com.mytour.auth.config.security.service.RefreshTokenService;
 import com.mytour.auth.config.security.service.UserDetailsImpl;
 import com.mytour.auth.domain.*;
 import com.mytour.auth.payload.RESULT_CODE;
@@ -9,13 +8,13 @@ import com.mytour.auth.payload.request.LoginRequest;
 import com.mytour.auth.payload.request.SignupRequest;
 import com.mytour.auth.payload.response.JwtResponse;
 import com.mytour.auth.payload.response.Result;
-import com.mytour.auth.payload.response.TokenRefreshResponse;
 import com.mytour.auth.repository.MemberAgreeRepo;
 import com.mytour.auth.repository.MemberRepo;
 import com.mytour.auth.repository.RoleRepo;
 import com.mytour.auth.util.ValidateMember;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -54,6 +53,8 @@ public class AuthService {
         this.memberAgreeRepo = memberAgreeRepo;
     }
 
+    private Logger logger = LoggerFactory.getLogger(AuthService.class);
+
     public Result signup(SignupRequest request) {
         Result result = new Result();
         result.setResult_code(RESULT_CODE.FAIL);
@@ -61,12 +62,12 @@ public class AuthService {
         try {
             if (!ValidateMember.validateMember(request)) {
                 result.setMsg("입력 형식을 확인해주세요.");
-                System.out.println("입력 형식 이상");
+                logger.info("####### SIGNUP username: {}, email: {}, password: {}", request.getUsername(), request.getEmail(), request.getPassword());
                 return result;
             }
 
-            if (existMember(request) || existEmail(request)) { 
-                System.out.println("존재하는 유저");
+            if (existMember(request) || existEmail(request)) {
+                logger.info("####### SIGNUP username: {}", request.getUsername());
                 return result;}
             
             MemberDTO member = new MemberDTO();
@@ -75,14 +76,17 @@ public class AuthService {
             member.setPassword(encoder.encode(request.getPassword()));
             member.setRoles(getMemberRoles(request.getRole()));
 
+            logger.info("##### SIGNUP MEMBER: {}", member.toString());
+
             memberRepo.save(member);
 
             for(EAgreement agree : request.getAgreements()) {
-                System.out.println(agree.toString());
+                logger.info("##### SIGNUP MEMBER: {}", agree.toString());
                 memberAgreeRepo.save(new MemberAgreeDTO(request.getUsername(), agree));
             }
 
         } catch (Exception e) {
+            logger.error("##### SIGNUP EXCEPTION: {}", e.toString());
             result.setResult_code(RESULT_CODE.ERROR);
         }
 
@@ -91,14 +95,14 @@ public class AuthService {
 
     public Result signin(LoginRequest request) {
         Result result = new Result();
+        result.setResult_code(RESULT_CODE.FAIL);
 
         try {
             Optional<MemberDTO> findMember = memberRepo.findByUsername(request.getUsername());
 
             findMember.ifPresent(member -> {
-                String inputPassword = encoder.encode(request.getPassword());
 
-                if (!member.getPassword().equals(inputPassword)) {
+                if (encoder.matches(request.getPassword(), member.getPassword())) {
                     Authentication authentication = authenticationManager.authenticate(
                                                         new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword()));
 
@@ -121,10 +125,14 @@ public class AuthService {
                     result.setData(jwtResponse);
                     result.setResult_code(RESULT_CODE.SUCCESS);
                 }
-
+                else {
+                    logger.info("###### LOGIN PASSWORD NOT MATCHED USERNAME: {}, PASSWORD: {}", request.getUsername(), request.getPassword());
+                }
             });
         } catch (Exception e) {
-
+            logger.error("##### SIGNIN EXCEPTION: {}", e.toString());
+            logger.info("###### LOGIN USERNAME: {}", request.getUsername());
+            result.setResult_code(RESULT_CODE.ERROR);
         }
         return result;
     }
@@ -157,11 +165,9 @@ public class AuthService {
                 });
             }
         } catch (Exception e) {
-
+            logger.error("##### SIGNIN GENERATE_TOKEN EXCEPTION: {}", e.toString());
         }
-        System.out.println(roles.toString());
         return roles;
-
     }
 
     public boolean existMember(SignupRequest member) {

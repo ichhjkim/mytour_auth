@@ -1,6 +1,5 @@
 package com.mytour.auth.controller;
 
-import com.mytour.auth.config.security.jwt.JwtUtils;
 import com.mytour.auth.config.security.service.RefreshTokenService;
 import com.mytour.auth.domain.RefreshToken;
 import com.mytour.auth.payload.RESULT_CODE;
@@ -13,6 +12,9 @@ import com.mytour.auth.payload.response.MessageResponse;
 import com.mytour.auth.payload.response.Result;
 import com.mytour.auth.payload.response.TokenRefreshResponse;
 import com.mytour.auth.service.AuthService;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +31,8 @@ public class AuthController {
     private final AuthService authService;
     private final RefreshTokenService refreshTokenService;
 
+    private Logger logger = LoggerFactory.getLogger(AuthController.class);
+
     @Autowired
     AuthController(AuthService authService,
                    RefreshTokenService refreshTokenService) {
@@ -38,9 +42,11 @@ public class AuthController {
 
     @PostMapping("/signup")
     public ResponseEntity<?> registerUser(@RequestBody SignupRequest signUpRequest) {
-        Result result = new Result();
-        result = authService.signup(signUpRequest);
-        return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
+
+        Result result = authService.signup(signUpRequest);
+
+        logger.info("###### SIGNUP - NEW_MEMBER: {}", signUpRequest.getUsername());
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping(value = "/login")
@@ -56,6 +62,8 @@ public class AuthController {
             result.setData(jwtResponse);
             return ResponseEntity.ok(result);
         }
+
+        logger.info("###### LOGIN - MEMBER: {}", request.getUsername());
         return ResponseEntity.ok(result);
     }
 
@@ -63,10 +71,11 @@ public class AuthController {
     public ResponseEntity<?> refreshtoken(@RequestBody TokenRefreshRequest request) {
         String requestRefreshToken = request.getRefreshToken();
         Result result = getRefreshToken(requestRefreshToken);
-        TokenRefreshResponse response = new TokenRefreshResponse(result.getData().toString(), requestRefreshToken);
 
-        result.setData(response);
-
+        if (RESULT_CODE.SUCCESS.equals(result.getResult_code())) {
+            TokenRefreshResponse response = new TokenRefreshResponse(result.getData().toString(), requestRefreshToken);
+            result.setData(response);
+        }
         return ResponseEntity.ok(result);
     }
 
@@ -78,9 +87,16 @@ public class AuthController {
 
     public Result getRefreshToken(String requestRefreshToken) {
         Result result = new Result();
-        RefreshToken refresh = refreshTokenService.findByToken(requestRefreshToken).get();
+        result.setResult_code(RESULT_CODE.FAIL);
 
         try {
+            RefreshToken refresh = refreshTokenService.findByToken(requestRefreshToken).get();
+
+            if (refresh==null || refresh.getToken()==null) {
+                logger.info("###### REFRESH TOKEN IS NULL");
+                return result;
+            }
+
             RefreshToken refreshToken = refreshTokenService.verifyExpiration(refresh);
             String username = refreshToken.getMemberDTO().getUsername();
             String token = authService.generateToken(username);
@@ -88,6 +104,7 @@ public class AuthController {
             result.setResult_code(RESULT_CODE.SUCCESS);
             result.setData(token);
         } catch (Exception e) {
+            logger.error("####### JWT TOKEN REFRESH EXCEPTION: {}", e.toString());
             result.setResult_code(RESULT_CODE.ERROR);
         }
         return result;

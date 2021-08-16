@@ -1,18 +1,16 @@
 package com.mytour.auth.domain;
 
-import com.mytour.auth.util.BaseTimeEntity;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
+import lombok.ToString;
 
 import javax.persistence.*;
-import java.time.LocalDateTime;
 import java.util.Date;
 
 @Entity(name = "member_agree")
 @Getter
 @Setter
+@ToString
 public class MemberAgreeDTO {
 
     @Id
